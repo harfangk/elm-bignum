@@ -1,40 +1,19 @@
-module Test.Integer exposing (fuzzer, maxIntRange, suite)
+module Test.Integer exposing (fuzzer, suite)
 
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
 import Integer exposing (Integer)
-import Random exposing (Generator)
-import Shrink exposing (Shrinker)
+import Random exposing (maxInt)
 import Test exposing (Test, describe, fuzz, fuzz2, fuzz3)
 
 
 fuzzer : Fuzzer Integer
 fuzzer =
-    Fuzz.custom generator shrinker
-
-
-generator : Generator Integer
-generator =
-    Random.int 1 10
-        |> Random.andThen (\i -> Random.list i (Random.int 0 Random.maxInt))
-        |> Random.map (List.map String.fromInt >> List.foldl (++) "")
-        |> Random.map2 (++) (Random.uniform "" [ "-" ])
-        |> Random.map (Integer.fromString >> Maybe.withDefault Integer.zero)
-
-
-shrinker : Shrinker Integer
-shrinker i =
-    if Integer.lt (Integer.abs i) Integer.ten then
-        Shrink.noShrink i
-
-    else
-        Shrink.bool True
-            |> Shrink.map (\_ -> Integer.div i Integer.ten |> Maybe.withDefault Integer.zero)
-
-
-maxIntRange : Fuzzer Int
-maxIntRange =
-    Fuzz.intRange Random.minInt Random.maxInt
+    Fuzz.intRange 1 10
+        |> Fuzz.andThen (\i -> List.repeat i (Fuzz.uniformInt (Random.maxInt)) |> Fuzz.sequence)
+        |> Fuzz.map (List.map String.fromInt >> List.foldl (++) "")
+        |> Fuzz.map2 (++) (Fuzz.oneOfValues ["", "-"])
+        |> Fuzz.map (Integer.fromString >> Maybe.withDefault Integer.zero)
 
 
 halfMaxIntRange : Fuzzer Int
@@ -52,34 +31,34 @@ nonZeroInt =
             else
                 i
         )
-        maxIntRange
+        Fuzz.int
 
 
 suite : Test
 suite =
     describe "Integer module"
         [ describe "fromInt"
-            [ Test.fuzz maxIntRange "should have identical sign as Int" <|
+            [ Test.fuzz Fuzz.int "should have identical sign as Int" <|
                 \i ->
                     Expect.equal (Integer.compare (Integer.fromInt i) (Integer.fromInt 0)) (Basics.compare i 0)
-            , Test.fuzz maxIntRange "should have same string representation as Int" <|
+            , Test.fuzz Fuzz.int "should have same string representation as Int" <|
                 \i ->
                     Expect.equal (Integer.toString << Integer.fromInt <| i) (String.fromInt i)
-            , Test.fuzz2 maxIntRange maxIntRange "should have same result for addition as Int" <|
+            , Test.fuzz2 Fuzz.int Fuzz.int "should have same result for addition as Int" <|
                 \i1 i2 ->
                     Expect.equal (Integer.add (Integer.fromInt i1) (Integer.fromInt i2)) (Integer.fromInt (i1 + i2))
-            , Test.fuzz2 maxIntRange maxIntRange "should have same result for subtraction as Int" <|
+            , Test.fuzz2 Fuzz.int Fuzz.int "should have same result for subtraction as Int" <|
                 \i1 i2 ->
                     Expect.equal (Integer.sub (Integer.fromInt i1) (Integer.fromInt i2)) (Integer.fromInt (i1 - i2))
             , Test.fuzz2 halfMaxIntRange halfMaxIntRange "should have same result for multiplication as Int" <|
                 \i1 i2 ->
                     Expect.equal (Integer.mul (Integer.fromInt i1) (Integer.fromInt i2)) (Integer.fromInt (i1 * i2))
-            , Test.fuzz2 maxIntRange maxIntRange "should have same result for division as Int" <|
+            , Test.fuzz2 Fuzz.int nonZeroInt "should have same result for division as Int" <|
                 \i1 i2 ->
                     Expect.equal
                         (Integer.div (Integer.fromInt i1) (Integer.fromInt i2))
                         (Just (Integer.fromInt (i1 // i2)))
-            , Test.fuzz2 maxIntRange nonZeroInt "should have same result for divmod as Int" <|
+            , Test.fuzz2 Fuzz.int nonZeroInt "should have same result for divmod as Int" <|
                 \i1 i2 ->
                     let
                         intDivmod =

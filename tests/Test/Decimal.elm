@@ -5,9 +5,8 @@ import Decimal exposing (Decimal, Exponent)
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
 import Integer
-import Random exposing (Generator)
+import Random
 import Regex
-import Shrink exposing (Shrinker)
 import Test exposing (Test, describe, fuzz, fuzz2, fuzz3, test)
 import Test.Integer
 
@@ -17,99 +16,56 @@ fuzzer =
     Fuzz.oneOf [ sciDecimalFuzzer, decDecimalFuzzer ]
 
 
-sciDecimalFuzzer : Fuzzer Decimal
-sciDecimalFuzzer =
-    Fuzz.custom (Random.map (Decimal.fromString >> Maybe.withDefault (Decimal.fromInt 0)) scientificStringGenerator) shrinker
-
-
 decDecimalFuzzer : Fuzzer Decimal
 decDecimalFuzzer =
-    Fuzz.custom (Random.map (Decimal.fromString >> Maybe.withDefault (Decimal.fromInt 0)) decimalStringGenerator) shrinker
-
-
-decimalStringGenerator : Generator String
-decimalStringGenerator =
     let
         int =
-            Random.int 1 5
-                |> Random.andThen (\i -> Random.list i (Random.int 0 Random.maxInt))
-                |> Random.map (List.map String.fromInt >> List.foldl (++) "")
+            Fuzz.intRange 1 5
+                |> Fuzz.andThen (\i -> List.repeat i (Fuzz.uniformInt Random.maxInt) |> Fuzz.sequence)
+                |> Fuzz.map (List.map String.fromInt >> List.foldl (++) "")
 
         fraction =
-            Random.int 0 3
-                |> Random.andThen (\i -> Random.list i (Random.int 0 Random.maxInt))
-                |> Random.map (List.map String.fromInt >> List.foldl (++) "")
+            Fuzz.intRange 0 3
+                |> Fuzz.andThen (\i -> List.repeat i (Fuzz.uniformInt Random.maxInt) |> Fuzz.sequence)
+                |> Fuzz.map (List.map String.fromInt >> List.foldl (++) "")
 
         sign =
-            Random.uniform "" [ "-" ]
+            Fuzz.oneOfValues [ "", "-" ]
     in
-    Random.map2 (++) (Random.constant ".") fraction
-        |> Random.map2 (++) int
-        |> Random.map2 (++) sign
+    Fuzz.map2 (++) (Fuzz.constant ".") fraction
+        |> Fuzz.map2 (++) int
+        |> Fuzz.map2 (++) sign
+        |> Fuzz.map (Decimal.fromString >> Maybe.withDefault (Decimal.fromInt 0))
 
 
-scientificStringGenerator : Generator String
-scientificStringGenerator =
+sciDecimalFuzzer : Fuzzer Decimal
+sciDecimalFuzzer =
     let
         i =
-            Random.int 0 9 |> Random.map String.fromInt
+            Fuzz.intRange 1 9 
+            |> Fuzz.map String.fromInt
 
         f =
-            Random.int Random.minInt Random.maxInt
-                |> Random.map
+            Fuzz.int
+                |> Fuzz.map
                     (String.fromInt
-                        >> (\int ->
-                                if int == "0" then
+                        >> (\s ->
+                                if s == "0" then
                                     ""
 
                                 else
-                                    "." ++ int
+                                    "." ++ s
                            )
                     )
 
         coefficient =
-            Random.map2 (++) i f
+            Fuzz.map2 (++) i f
 
         exponent =
-            Random.int Decimal.minExponent (Basics.negate Decimal.minExponent) |> Random.map (String.fromInt >> (++) "e")
+            Fuzz.intRange Decimal.minExponent (Basics.negate Decimal.minExponent) |> Fuzz.map (String.fromInt >> (++) "e")
     in
-    Random.map2 (++) coefficient exponent
-
-
-shrinker : Shrinker Decimal
-shrinker d =
-    let
-        e =
-            Decimal.exponent d
-
-        e_ =
-            if e >= 0 then
-                e
-
-            else
-                Basics.min 0 (e + 2)
-
-        d_ =
-            Decimal.div d (Decimal.fromInt 10)
-                |> Maybe.map (Decimal.roundWithContext { e = e_, mode = Decimal.Down })
-                |> Maybe.withDefault (Decimal.fromInt 0)
-    in
-    if Decimal.eq d (Decimal.fromInt 0) || Decimal.eq d d_ then
-        Shrink.noShrink d
-
-    else
-        Shrink.bool True
-            |> Shrink.map (\_ -> d_)
-
-
-trimTrailingZero : String -> String
-trimTrailingZero s =
-    if String.contains "." s && (String.endsWith "0" s || String.endsWith "." s) then
-        trimTrailingZero (String.dropRight 1 s)
-
-    else
-        s
-
+    Fuzz.map2 (++) coefficient exponent
+    |> Fuzz.map (Decimal.fromString >> Maybe.withDefault (Decimal.fromInt 0))
 
 
 {--
@@ -190,7 +146,7 @@ suite : Test
 suite =
     describe "Decimal module"
         [ describe "fromInt"
-            [ fuzz Test.Integer.maxIntRange "should create correct Decimal" <|
+            [ fuzz Fuzz.int "should create correct Decimal" <|
                 \i ->
                     Expect.equal (i |> Decimal.fromInt >> Decimal.toString) (String.fromInt i)
             ]
@@ -291,9 +247,13 @@ suite =
                                 withinTolerance (Decimal.mul result d2) d1
             ]
         , describe "abs"
-            [ fuzz fuzzer "abs d should be larger than or equal to d" <|
+            [ fuzz fuzzer "should return itself when it is positive or 0, and its positive value when it's negative" <|
                 \d ->
-                    Expect.true "Expected abs value to be gte itself" (Decimal.gte (Decimal.abs d) d)
+                  if (Decimal.lt d (Decimal.fromInt 0)) then
+                    Expect.equal (Decimal.add (Decimal.abs d) d) (Decimal.fromInt 0)
+
+                  else 
+                    Expect.equal (Decimal.abs d) d
             ]
         , describe "negate"
             [ fuzz fuzzer "should return original i when applied twice" <|
@@ -502,9 +462,9 @@ suite =
                 (\( i, sqrtValue ) ->
                     test ("sqrt of " ++ String.fromInt i) <|
                         \_ ->
-                            case i |> Decimal.fromInt >> Decimal.sqrtToMinE -74 >> Maybe.map (Decimal.toString >> String.startsWith (sqrtValue |> String.left 74)) of
-                                Just bool ->
-                                    Expect.true "is correct up to 74 digits" bool
+                            case i |> Decimal.fromInt |> Decimal.sqrtToMinE -74 of 
+                                Just value ->
+                                  Expect.equal (value |> Decimal.toString |> String.left 74) (sqrtValue |> String.left 74)
 
                                 Nothing ->
                                     Expect.fail "could not be calculated"
