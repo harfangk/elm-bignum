@@ -10,9 +10,9 @@ import Test exposing (Test, describe, fuzz, fuzz2, fuzz3)
 fuzzer : Fuzzer Integer
 fuzzer =
     Fuzz.intRange 1 10
-        |> Fuzz.andThen (\i -> List.repeat i (Fuzz.uniformInt (Random.maxInt)) |> Fuzz.sequence)
+        |> Fuzz.andThen (\i -> List.repeat i (Fuzz.uniformInt Random.maxInt) |> Fuzz.sequence)
         |> Fuzz.map (List.map String.fromInt >> List.foldl (++) "")
-        |> Fuzz.map2 (++) (Fuzz.oneOfValues ["", "-"])
+        |> Fuzz.map2 (++) (Fuzz.oneOfValues [ "", "-" ])
         |> Fuzz.map (Integer.fromString >> Maybe.withDefault Integer.zero)
 
 

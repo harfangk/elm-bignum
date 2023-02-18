@@ -42,8 +42,8 @@ sciDecimalFuzzer : Fuzzer Decimal
 sciDecimalFuzzer =
     let
         i =
-            Fuzz.intRange 1 9 
-            |> Fuzz.map String.fromInt
+            Fuzz.intRange 1 9
+                |> Fuzz.map String.fromInt
 
         f =
             Fuzz.int
@@ -65,7 +65,8 @@ sciDecimalFuzzer =
             Fuzz.intRange Decimal.minExponent (Basics.negate Decimal.minExponent) |> Fuzz.map (String.fromInt >> (++) "e")
     in
     Fuzz.map2 (++) coefficient exponent
-    |> Fuzz.map (Decimal.fromString >> Maybe.withDefault (Decimal.fromInt 0))
+        |> Fuzz.map (Decimal.fromString >> Maybe.withDefault (Decimal.fromInt 0))
+
 
 
 {--
@@ -249,11 +250,11 @@ suite =
         , describe "abs"
             [ fuzz fuzzer "should return itself when it is positive or 0, and its positive value when it's negative" <|
                 \d ->
-                  if (Decimal.lt d (Decimal.fromInt 0)) then
-                    Expect.equal (Decimal.add (Decimal.abs d) d) (Decimal.fromInt 0)
+                    if Decimal.lt d (Decimal.fromInt 0) then
+                        Expect.equal (Decimal.add (Decimal.abs d) d) (Decimal.fromInt 0)
 
-                  else 
-                    Expect.equal (Decimal.abs d) d
+                    else
+                        Expect.equal (Decimal.abs d) d
             ]
         , describe "negate"
             [ fuzz fuzzer "should return original i when applied twice" <|
@@ -462,9 +463,9 @@ suite =
                 (\( i, sqrtValue ) ->
                     test ("sqrt of " ++ String.fromInt i) <|
                         \_ ->
-                            case i |> Decimal.fromInt |> Decimal.sqrtToMinE -74 of 
+                            case i |> Decimal.fromInt |> Decimal.sqrtToMinE -74 of
                                 Just value ->
-                                  Expect.equal (value |> Decimal.toString |> String.left 74) (sqrtValue |> String.left 74)
+                                    Expect.equal (value |> Decimal.toString |> String.left 74) (sqrtValue |> String.left 74)
 
                                 Nothing ->
                                     Expect.fail "could not be calculated"
